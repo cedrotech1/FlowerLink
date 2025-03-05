@@ -409,6 +409,117 @@ export const checkoutOrder = async (req, res) => {
   }
 };
 
+export const placeOrder = async (req, res) => {
+  try {
+    const { productID, quantity, number } = req.body;
+    const userID = req.user.id; // Extract user ID from authentication middleware
+
+    if (!productID || !quantity || !number) {
+      console.log("[ERROR] Missing required fields.");
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    console.log(`[INFO] Buyer ${userID} is placing an order...`);
+
+    const product = await Products.findByPk(productID);
+    if (!product) {
+      console.log(`[ERROR] Product ${productID} not found.`);
+      return res.status(404).json({ error: "Product not found" });
+    }
+
+    if (product.quantity < quantity) {
+      console.log(`[ERROR] Insufficient stock for product ${productID}.`);
+      return res.status(400).json({ error: "Insufficient stock" });
+    }
+
+    const totalAmount = product.price * quantity;
+    console.log(`[INFO] Processing payment of ${totalAmount} Rwf for user ${userID}...`);
+
+    // Buyer makes payment
+    const paymentResponse = await paypack.cashin({
+      number,
+      amount: totalAmount,
+      environment: "development",
+    });
+
+    console.log("[INFO] Payment initiated:", paymentResponse.data);
+    const transactionId = paymentResponse.data.ref;
+
+    const paymentResult = await waitForPaymentApproval(transactionId);
+    if (!paymentResult.success) {
+      console.log(`[ERROR] Payment failed for transaction: ${transactionId}`);
+      return res.status(400).json({ error: "Payment failed or timed out" });
+    }
+
+    console.log("[INFO] Payment successful! Creating order...");
+
+    // Create order record (status: "pending")
+    const order = await Orders.create({
+      userID,
+      productID,
+      quantity,
+      totalAmount,
+      status: "pending",
+    });
+
+    // Reduce stock
+    await Products.update({ quantity: product.quantity - quantity }, { where: { id: productID } });
+
+    // Seller payout (90% of total amount)
+    const refundAmount = totalAmount * 0.9;
+    const seller = await Users.findByPk(product.userID);
+
+    console.log(`[INFO] Paying seller ${seller.phone} (${refundAmount} Rwf)...`);
+
+    const payoutResponse = await paypack.cashout({
+      number: seller.phone,
+      amount: refundAmount,
+      environment: "development",
+    });
+
+    console.log("[INFO] Seller payout initiated:", payoutResponse.data);
+    const payoutTransactionId = payoutResponse.data.ref;
+
+    const payoutResult = await waitForPaymentApproval(payoutTransactionId);
+    if (!payoutResult.success) {
+      console.log(`[ERROR] Seller payout failed for transaction: ${payoutTransactionId}`);
+      return res.status(400).json({ error: "Seller payout failed or timed out" });
+    }
+
+    console.log("[INFO] Seller payment successful!");
+
+    // **Update order status to "paid"**
+    await Orders.update({ status: "paid" }, { where: { id: order.id } });
+
+    // Notifications
+    await sendNotification({
+      user: seller,
+      title: "Payment Received",
+      message: `You have received ${refundAmount} Rwf for selling ${product.name}.`,
+      type: "order",
+    });
+
+    await sendNotification({
+      user: { id: userID },
+      title: "Order Confirmed",
+      message: `Your order for ${product.name} is confirmed!`,
+      type: "order",
+    });
+
+    console.log("[INFO] Order flow completed successfully.");
+    return res.status(201).json({
+      success: true,
+      message: "Order placed successfully, seller paid, and order marked as paid!",
+      order,
+    });
+
+  } catch (error) {
+    console.error("[ERROR] Order processing failed:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
 
 
 

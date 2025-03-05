@@ -659,6 +659,8 @@ export const ResetPassword = async (req, res) => {
 export const getAdminOverview = async (req, res) => {
   try {
     console.log("[INFO] Fetching system overview...");
+
+    // User Statistics
     const users = await Users.findAll({
       attributes: ["role"],
       raw: true,
@@ -696,30 +698,8 @@ export const getAdminOverview = async (req, res) => {
       { totalOrders: 0, totalRevenue: 0 }
     );
 
-    // Category Statistics
-    const categories = await Categories.findAll({
-      include: [
-        {
-          model: Products,
-          as: "Products",
-          attributes: ["id"],
-        },
-      ],
-    });
-
-
-
-    // Profit from Refunded Orders (10% of refunded payments)
-    const refundedPayments = await Payments.findAll({
-      where: { status: "refunded" },
-      attributes: ["amount"],
-      raw: true,
-    });
-
-    const totalProfit = refundedPayments.reduce(
-      (sum, payment) => sum + parseFloat(payment.amount) * 0.1,
-      0
-    );
+    // **Calculate platform profit (10% of total revenue)**
+    const platformProfit = orderStats.totalRevenue * 0.1;
 
     console.log("[INFO] System overview fetched successfully.");
 
@@ -728,13 +708,14 @@ export const getAdminOverview = async (req, res) => {
       userStats,
       productStats,
       orderStats,
-      totalProfit,
+      platformProfit,
     });
   } catch (error) {
     console.error("[ERROR] Failed to fetch system overview:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 };
+
 
 export const getSellerOverview = async (req, res) => {
   try {
@@ -829,59 +810,48 @@ export const getSellerOverview = async (req, res) => {
 
 export const getBuyerOverview = async (req, res) => {
   try {
+    const sellerId = req.user.id; // Logged-in user ID
+    console.log(`[INFO] Fetching order stats for seller ID: ${sellerId}`);
 
-    let role = req.user.role;
-    if (role != "buyer") {
-      return res.status(400).json({
-        success: false,
-        message: "You are not allowed to add products",
-      });
-    }
-    const buyerId = req.user.id; // Logged-in buyer ID
-    console.log(`[INFO] Fetching overview for buyer ID: ${buyerId}`);
+    // Count total orders made by the seller
+    const totalOrders = await Orders.count({
+      where: { userID: sellerId },
+    });
 
-    // Check if the user is a buyer
-    const buyer = await Users.findOne({ where: { id: buyerId, role: "buyer" } });
-    if (!buyer) {
-      console.log(`[ERROR] User ${buyerId} is not authorized to view buyer stats.`);
-      return res.status(403).json({ error: "Access denied. Only buyers can view this overview." });
-    }
-    // userID
-    // Get all orders placed by the buyer
+    // Calculate total amount spent by the seller
+    const totalAmountSpent = await Orders.sum("totalAmount", {
+      where: { userID: sellerId },
+    });
+
+    // Get order statistics based on status
     const orders = await Orders.findAll({
-      where: { userID:buyerId },
-      attributes: ["status", "totalAmount"],
+      where: { userID: sellerId },
+      attributes: ["status"],
       raw: true,
     });
 
-    const orderStats = orders.reduce(
-      (acc, order) => {
-        acc[order.status] = (acc[order.status] || 0) + 1;
-        acc.totalOrders += 1;
-        acc.totalSpent += order.status === "completed" ? parseFloat(order.totalAmount) : 0;
-        acc.totalRefunded += order.status === "refunded" ? parseFloat(order.totalAmount) : 0;
-        return acc;
-      },
-      { totalOrders: 0, totalSpent: 0, totalRefunded: 0 }
-    );
+    // Count the number of orders per status
+    const orderStats = orders.reduce((acc, order) => {
+      acc[order.status] = (acc[order.status] || 0) + 1;
+      return acc;
+    }, {});
 
-    // Get total unpaid orders (status: "pending")
-    const totalUnpaidOrders = orderStats["pending"] || 0;
-
-    console.log(`[INFO] Buyer overview fetched for buyer ID: ${buyerId}`);
+    console.log(`[INFO] Order stats fetched for seller ID: ${sellerId}`);
 
     return res.status(200).json({
       success: true,
-      orderStats,
-      totalSpent: orderStats.totalSpent,
-      totalRefunded: orderStats.totalRefunded,
-      totalUnpaidOrders,
+      totalOrders,
+      totalAmountSpent: totalAmountSpent || 0, // Ensure it returns 0 if no orders exist
+      orderStats, // Statistics for each order status
     });
   } catch (error) {
-    console.error("[ERROR] Failed to fetch buyer overview:", error);
+    console.error("[ERROR] Failed to fetch order stats:", error);
     return res.status(500).json({ error: "Internal server error" });
   }
 };
+
+
+
 
 export const getSellerSalesReport = async (req, res) => {
   try {

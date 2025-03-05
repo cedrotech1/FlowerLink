@@ -31,7 +31,7 @@ const InStockProducts = () => {
 
       setInStock(response.data.data);
     } catch (error) {
-      toast.error("Error fetching products");
+      // toast.error("Error fetching products");
     } finally {
       setLoading(false);
     }
@@ -83,6 +83,7 @@ const InStockProducts = () => {
 
     } catch (error) {
       toast.error("Failed to place order!");
+      
     } finally {
       setLoading(false);  // Reset loading state after the order is completed
     }

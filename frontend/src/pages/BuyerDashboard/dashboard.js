@@ -4,24 +4,31 @@ import { FaShoppingCart, FaDollarSign } from 'react-icons/fa';
 import { Pie } from 'react-chartjs-2';
 import { Chart as ChartJS, ArcElement, Tooltip, Legend } from 'chart.js';
 import Title from "../../components_part/TitleCard";
+
 // Register chart.js elements
 ChartJS.register(ArcElement, Tooltip, Legend);
 
 const BuyerOverview = () => {
   const [stats, setStats] = useState(null);
   const token = localStorage.getItem("token");
+
   useEffect(() => {
     const fetchData = async () => {
-      const response = await fetch(`${process.env.REACT_APP_BASE_URL}/api/v1/users/buyer/overview`, {
-        method: 'GET',
-        headers: {
-          'accept': '*/*',
-          'Authorization': `Bearer ${token}`,
-        },
-      });
-      const data = await response.json();
-      if (data.success) {
-        setStats(data);
+      try {
+        const response = await fetch(`${process.env.REACT_APP_BASE_URL}/api/v1/users/buyer/overview`, {
+          method: 'GET',
+          headers: {
+            'accept': '*/*',
+            'Authorization': `Bearer ${token}`,
+          },
+        });
+
+        const data = await response.json();
+        if (data.success) {
+          setStats(data);
+        }
+      } catch (error) {
+        console.error("Error fetching buyer overview:", error);
       }
     };
 
@@ -32,58 +39,48 @@ const BuyerOverview = () => {
     return <div>Loading...</div>;
   }
 
-  // Data for Pie charts
+  // Ensure orderStats exist and avoid undefined values
+  const { totalOrders, totalAmountSpent, orderStats } = stats;
+  const paidOrders = orderStats?.paid || 0;
+  const unpaidOrders = orderStats?.unpaid || 0;
+  const refundedOrders = orderStats?.refunded || 0;
+  const completedOrders = orderStats?.completed || 0;
+
+  // Data for Pie chart
   const orderChartData = {
-    labels: ['Completed', 'Paid', 'Unpaid', 'Refunded'],
+    labels: ['Paid', 'Unpaid', 'Refunded', 'Completed'],
     datasets: [{
-      data: [stats.orderStats.completed, stats.orderStats.paid, stats.orderStats.totalUnpaidOrders, stats.orderStats.totalRefunded],
-      backgroundColor: ['#4caf50', '#2196f3', '#f44336', '#ff9800'], // Green, Blue, Red, Orange
+      data: [paidOrders, unpaidOrders, refundedOrders, completedOrders],
+      backgroundColor: ['#4caf50', '#f44336', '#ff9800', '#2196f3'], // Green, Red, Orange, Blue
       borderWidth: 1,
     }],
   };
 
-  // Helper function to render dynamic order status
-  const renderOrderStatus = (status) => {
-    switch (status) {
-      case 'paid':
-        return <Badge bg="success">Paid</Badge>;
-      case 'completed':
-        return <Badge bg="primary">Completed</Badge>;
-      case 'unpaid':
-        return <Badge bg="danger">Unpaid</Badge>;
-      case 'refunded':
-        return <Badge bg="warning">Refunded</Badge>;
-      default:
-        return <Badge bg="secondary">Pending</Badge>;
-    }
-  };
-
   return (
     <div className="container mt-4">
-
-      <Title title={'Buyer Overview'}/>
+      <Title title="Buyer Overview" />
 
       {/* Cards Section */}
-      <Row className="mb-4 g-4"> {/* g-4 to add gutter spacing between columns */}
+      <Row className="mb-4 g-4">
         {/* Orders Statistics Card */}
         <Col xs={12} md={6} lg={4}>
           <Card className="text-white" style={{ backgroundColor: '#2196f3' }}>
             <Card.Body>
               <Card.Title><FaShoppingCart size={32} color="white" /> Orders</Card.Title>
               <Card.Text>
-                <strong>Total Orders:</strong> {stats.orderStats.totalOrders}
+                <strong>Total Orders:</strong> {totalOrders}
               </Card.Text>
               <Card.Text>
-                <strong>Completed:</strong> {stats.orderStats.completed} {renderOrderStatus('completed')}
+                <strong>Paid:</strong> {paidOrders} <Badge bg="success">Paid</Badge>
               </Card.Text>
               <Card.Text>
-                <strong>Paid:</strong> {stats.orderStats.paid} {renderOrderStatus('paid')}
+                <strong>Unpaid:</strong> {unpaidOrders} <Badge bg="danger">Unpaid</Badge>
               </Card.Text>
               <Card.Text>
-                <strong>Refunded:</strong> {stats.orderStats.totalRefunded} {renderOrderStatus('refunded')}
+                <strong>Refunded:</strong> {refundedOrders} <Badge bg="warning">Refunded</Badge>
               </Card.Text>
               <Card.Text>
-                <strong>Total Spent:</strong> ${stats.orderStats.totalSpent}
+                <strong>Completed:</strong> {completedOrders} <Badge bg="primary">Completed</Badge>
               </Card.Text>
             </Card.Body>
           </Card>
@@ -95,7 +92,7 @@ const BuyerOverview = () => {
             <Card.Body>
               <Card.Title><FaDollarSign size={32} color="white" /> Total Spent</Card.Title>
               <Card.Text>
-                <strong>Total Spent:</strong> ${stats.totalSpent}
+                <strong>Total Spent:</strong> ${totalAmountSpent}
               </Card.Text>
             </Card.Body>
           </Card>
@@ -104,7 +101,6 @@ const BuyerOverview = () => {
 
       {/* Graphs Section */}
       <Row className="mb-4 g-4">
-        {/* Orders Chart */}
         <Col xs={8}>
           <Card>
             <Card.Body>

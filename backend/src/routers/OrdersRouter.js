@@ -5,13 +5,14 @@ import {
   createOrder1,
   changeOrderStatus,
   get_one_order,
-  checkoutOrder
+  checkoutOrder,
+  placeOrder
 } from "../controllers/OrdersController.js"; 
 import { protect } from "../middlewares/protect.js";
 
 const router = express.Router();
 
-router.post("/add",protect, createOrder1 );
+router.post("/add",protect, placeOrder );
 router.post("/checkout/:id",protect, checkoutOrder );
 router.get("/", protect,getAllOrdersController);
 router.get("/one/:id", protect,get_one_order);
